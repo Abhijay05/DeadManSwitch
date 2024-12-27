@@ -1,0 +1,53 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.14;
+
+contract MultiUserDeadManSwitch {
+    address public beneficiary;
+    mapping(address => uint256) public balances;
+    uint256 public lastAliveBlock;
+
+    constructor(address _beneficiary) {
+        beneficiary = _beneficiary;
+        lastAliveBlock = block.number;
+    }
+
+    function stillAlive() public {
+        require(msg.sender == beneficiary, "Only the beneficiary can call this function");
+        lastAliveBlock = block.number;
+    }
+
+    modifier onlyIfNotRecentlyUsed() {
+        uint256 currentBlock = block.number;
+        if (currentBlock - lastAliveBlock > 10) {
+            revert NotRecentlyUsed();
+        }
+        _;
+    }
+
+    function deposit() public payable {
+        balances[msg.sender] += msg.value;
+    }
+
+    function withdrawFunds(address payable user) public onlyIfNotRecentlyUsed returns (bool) {
+        require(msg.sender == beneficiary, "Only the beneficiary can withdraw funds");
+        
+        uint256 amount = balances[user];
+        if (amount > 0) {
+            balances[user] = 0;
+            
+            (bool success, ) = user.call{value: amount}("");
+            if (!success) {
+                revert WithdrawFailed();
+            }
+            
+            lastAliveBlock = block.number;
+            return true;
+        } else {
+            revert NoFundsToWithdraw();
+        }
+    }
+
+    error NotRecentlyUsed();
+    error WithdrawFailed();
+    error NoFundsToWithdraw();
+}
